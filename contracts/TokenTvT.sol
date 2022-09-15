@@ -49,8 +49,6 @@ contract TokenTvT is TokenBase, ITokenHooks {
     address investorAddress,
     uint256 collateral,
     uint256 issuerCollateral,
-    uint256 insurerCollateral,
-    address collateralProvider,
     uint256 timeout
   );
 
@@ -66,8 +64,6 @@ contract TokenTvT is TokenBase, ITokenHooks {
     address investorAddress,
     uint256 collateral,
     uint256 issuerCollateral,
-    uint256 insurerCollateral,
-    address collateralProvider,
     uint256 timeout
   );
 
@@ -85,8 +81,6 @@ contract TokenTvT is TokenBase, ITokenHooks {
     _settlementPeriod = input.settlementPeriod;
     _collateral = input.collateral;
     _issuerCollateral = input.issuerCollateralShare;
-    _insurerCollateral = input.insurerCollateralShare;
-    _collateralProvider = input.collateralProvider;
     _issuerSettlementAddress = input.issuerSettlementAddress;
     _issueType = input.issueType;
 
@@ -169,8 +163,6 @@ contract TokenTvT is TokenBase, ITokenHooks {
         investorAddress: subscriber,
         collateral: _collateral * value,
         issuerCollateral: _issuerCollateral * value,
-        insurerCollateral: _insurerCollateral * value,
-        collateralProvider: _collateralProvider,
         timeout: _settlementPeriod
       });
       uint256 orderId = escrowManager.startIssuanceEscrow(escrowOrder);
@@ -186,8 +178,6 @@ contract TokenTvT is TokenBase, ITokenHooks {
         escrowOrder.investorAddress,
         escrowOrder.collateral,
         escrowOrder.issuerCollateral,
-        escrowOrder.insurerCollateral,
-        escrowOrder.collateralProvider,
         escrowOrder.timeout
       );
     }
@@ -345,8 +335,6 @@ contract TokenTvT is TokenBase, ITokenHooks {
         investorAddress: subscriber,
         collateral: _collateral * value,
         issuerCollateral: _issuerCollateral * value,
-        insurerCollateral: _insurerCollateral * value,
-        collateralProvider: _collateralProvider,
         timeout: _settlementPeriod
       });
       uint256 orderId = escrowManager.startRedemptionEscrow(escrowOrder);
@@ -362,8 +350,6 @@ contract TokenTvT is TokenBase, ITokenHooks {
         escrowOrder.investorAddress,
         escrowOrder.collateral,
         escrowOrder.issuerCollateral,
-        escrowOrder.insurerCollateral,
-        escrowOrder.collateralProvider,
         escrowOrder.timeout
       );
     }

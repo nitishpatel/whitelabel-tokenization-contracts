@@ -12,7 +12,5 @@ struct EscrowOrder {
   address investorAddress;
   uint256 collateral;
   uint256 issuerCollateral;
-  uint256 insurerCollateral;
-  address collateralProvider;
   uint256 timeout;
 }

@@ -35,10 +35,6 @@ contract EscrowManager is
 
   mapping(address => uint256) internal _collateralBalance;
   mapping(address => uint256) internal _collateralBalanceLocked;
-  mapping(address => mapping(address => uint256))
-    internal _insurerCollateralBalanceByIssuer;
-  mapping(address => mapping(address => uint256))
-    internal _insurerLockedCollateralBalanceByIssuer;
 
   mapping(uint256 => EscrowOrder) internal _escrowOrders;
   mapping(uint256 => EscrowType) internal _escrowOrdersType;
@@ -84,36 +80,6 @@ contract EscrowManager is
     uint256 orderId
   );
   event IssuerCollateralSpent(
-    address _issuer,
-    uint256 _amount,
-    uint256 orderId
-  );
-
-  // Insurer Collateral Events
-  event InsurerCollateralDeposited(
-    address _insurer,
-    address _issuer,
-    uint256 _amount
-  );
-  event InsurerCollateralWithdrawn(
-    address _insurer,
-    address _issuer,
-    uint256 _amount
-  );
-  event InsurerCollateralLocked(
-    address _insurer,
-    address _issuer,
-    uint256 _amount,
-    uint256 orderId
-  );
-  event InsurerCollateralUnlocked(
-    address _insurer,
-    address _issuer,
-    uint256 _amount,
-    uint256 orderId
-  );
-  event InsurerCollateralSpent(
-    address _insurer,
     address _issuer,
     uint256 _amount,
     uint256 orderId
@@ -237,25 +203,8 @@ contract EscrowManager is
     emit IssuerCollateralDeposited(account, msg.value);
   }
 
-  function depositInsurerCollateral(address account, address issuer)
-    external
-    payable
-  {
-    _insurerCollateralBalanceByIssuer[issuer][account] += msg.value;
-    _collateralBalance[account] += msg.value;
-    emit InsurerCollateralDeposited(account, issuer, msg.value);
-  }
-
   function collateralBalance(address account) external view returns (uint256) {
     return _collateralBalance[account];
-  }
-
-  function insurerCollateralBalanceByIssuer(address account, address issuer)
-    external
-    view
-    returns (uint256)
-  {
-    return _insurerCollateralBalanceByIssuer[issuer][account];
   }
 
   function lockedCollateralBalance(address account)
@@ -264,13 +213,6 @@ contract EscrowManager is
     returns (uint256)
   {
     return _collateralBalanceLocked[account];
-  }
-
-  function lockedInsurerCollateralBalanceByIssuer(
-    address account,
-    address issuer
-  ) external view returns (uint256) {
-    return _insurerLockedCollateralBalanceByIssuer[issuer][account];
   }
 
   function withdrawCollateral(uint256 value) external {
@@ -288,26 +230,6 @@ contract EscrowManager is
     emit IssuerCollateralWithdrawn(msg.sender, value);
   }
 
-  function withdrawInsurerCollateral(
-    address account,
-    address issuer,
-    uint256 value
-  ) external {
-    if (value > _insurerCollateralBalanceByIssuer[issuer][account]) {
-      throwError(ErrorCondition.INSUFFICIENT_LOCKED_COLLATERAL_BALANCE);
-    }
-
-    _insurerCollateralBalanceByIssuer[issuer][account] -= value;
-    _collateralBalance[account] -= value;
-    (bool success, bytes memory data) = payable(msg.sender).call{value: value}(
-      ""
-    );
-    if (!success) {
-      revert("Insurer Collateral withdrawal failed");
-    }
-    emit InsurerCollateralWithdrawn(account, issuer, value);
-  }
-
   function lockCollateral(
     address account,
     uint256 value,
@@ -320,22 +242,6 @@ contract EscrowManager is
     _collateralBalanceLocked[account] += value;
     _collateralBalance[account] -= value;
     emit IssuerCollateralLocked(account, value, orderId);
-  }
-
-  function lockInsurerCollateral(
-    address issuer,
-    address account,
-    uint256 value,
-    uint256 orderId
-  ) internal {
-    if (value > _insurerCollateralBalanceByIssuer[issuer][account]) {
-      throwError(ErrorCondition.INSUFFICIENT_LOCKED_COLLATERAL_BALANCE);
-    }
-
-    _insurerLockedCollateralBalanceByIssuer[issuer][account] += value;
-    _insurerCollateralBalanceByIssuer[issuer][account] -= value;
-    _collateralBalance[account] -= value;
-    emit InsurerCollateralLocked(issuer, account, value, orderId);
   }
 
   function unlockCollateral(
@@ -352,22 +258,6 @@ contract EscrowManager is
     emit IssuerCollateralUnlocked(account, value, orderId);
   }
 
-  function unlockInsurerCollateral(
-    address account,
-    address issuer,
-    uint256 value,
-    uint256 orderId
-  ) internal {
-    if (value > _insurerLockedCollateralBalanceByIssuer[issuer][account]) {
-      throwError(ErrorCondition.INSUFFICIENT_LOCKED_COLLATERAL_BALANCE);
-    }
-
-    _insurerLockedCollateralBalanceByIssuer[issuer][account] -= value;
-    _insurerCollateralBalanceByIssuer[issuer][account] += value;
-    _collateralBalance[account] += value;
-    emit InsurerCollateralUnlocked(issuer, account, value, orderId);
-  }
-
   function spendCollateral(
     address account,
     address payable destination,
@@ -381,22 +271,6 @@ contract EscrowManager is
     _collateralBalanceLocked[account] -= value;
     destination.sendValue(value);
     emit IssuerCollateralSpent(account, value, orderId);
-  }
-
-  function spendInsurerCollateral(
-    address account,
-    address issuer,
-    address payable destination,
-    uint256 value,
-    uint256 orderId
-  ) internal {
-    if (value > _insurerLockedCollateralBalanceByIssuer[issuer][account]) {
-      throwError(ErrorCondition.INSUFFICIENT_LOCKED_COLLATERAL_BALANCE);
-    }
-
-    _insurerLockedCollateralBalanceByIssuer[issuer][account] -= value;
-    destination.sendValue(value);
-    emit InsurerCollateralSpent(issuer, account, value, orderId);
   }
 
   function checkOrderCollatrized(uint256 orderId) public view returns (bool) {
@@ -434,21 +308,6 @@ contract EscrowManager is
     return
       escrowOrder.issuerCollateral <=
       _collateralBalance[escrowOrder.issuerAddress];
-  }
-
-  function checkIssuanceEscrowConditionsInsurerCollateral(uint256 orderId)
-    public
-    view
-    onlyOrderType(EscrowType.Issuance, orderId)
-    returns (bool)
-  {
-    EscrowOrder storage escrowOrder = _escrowOrders[orderId];
-
-    return
-      escrowOrder.insurerCollateral <=
-      _insurerCollateralBalanceByIssuer[escrowOrder.issuerAddress][
-        escrowOrder.collateralProvider
-      ];
   }
 
   function checkIssuanceEscrowConditionsIssuer(uint256 orderId)
@@ -529,19 +388,17 @@ contract EscrowManager is
   {
     return
       checkIssuanceEscrowConditionsIssuer(orderId) &&
-      checkIssuanceEscrowConditionsInvestor(orderId) &&
-      checkIssuanceEscrowConditionsInsurerCollateral(orderId);
+      checkIssuanceEscrowConditionsInvestor(orderId);
   }
 
   function getIssuanceEscrowConditions(uint256 orderId)
     public
     view
-    returns (bool[4] memory flags)
+    returns (bool[3] memory flags)
   {
     flags[0] = checkIssuanceEscrowConditionsIssuerToken(orderId);
     flags[1] = checkIssuanceEscrowConditionsIssuerCollateral(orderId);
     flags[2] = checkIssuanceEscrowConditionsInvestor(orderId);
-    flags[3] = checkIssuanceEscrowConditionsInsurerCollateral(orderId);
   }
 
   function checkRedemptionEscrowConditions(uint256 orderId)
@@ -590,12 +447,6 @@ contract EscrowManager is
     assert(
       escrowOrder.issuerCollateral <=
         _collateralBalanceLocked[escrowOrder.issuerAddress]
-    );
-    assert(
-      escrowOrder.insurerCollateral <=
-        _insurerLockedCollateralBalanceByIssuer[escrowOrder.issuerAddress][
-          escrowOrder.collateralProvider
-        ]
     );
 
     orderId = _nextEscrowOrderId;
@@ -681,13 +532,6 @@ contract EscrowManager is
       escrowOrder.issuerCollateral,
       orderId
     );
-    lockInsurerCollateral(
-      escrowOrder.issuerAddress,
-      escrowOrder.collateralProvider,
-      escrowOrder.insurerCollateral,
-      orderId
-    );
-
     ITokenHooks(escrowOrder.tradeToken).onIssue(
       escrowOrder.tradeTokenDestination,
       escrowOrder.tradeTokenAmount,
@@ -748,12 +592,6 @@ contract EscrowManager is
         escrowOrder.issuerCollateral,
         orderId
       );
-      unlockInsurerCollateral(
-        escrowOrder.collateralProvider,
-        escrowOrder.issuerAddress,
-        escrowOrder.insurerCollateral,
-        orderId
-      );
     } else {
       assert(timeoutFlag);
 
@@ -775,13 +613,7 @@ contract EscrowManager is
         escrowOrder.issuerCollateral,
         orderId
       );
-      spendInsurerCollateral(
-        escrowOrder.collateralProvider,
-        escrowOrder.issuerAddress,
-        payable(escrowOrder.paymentTokenDestination),
-        escrowOrder.insurerCollateral,
-        orderId
-      );
+
       emit DefaultedEscrow(orderId);
     }
     ITokenHooks(escrowOrder.tradeToken).burnTokens(
