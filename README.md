@@ -1,5 +1,11 @@
 # Yodaplus Tokenization Platform Smart Contracts
 [![tests](https://github.com/yodaplus/tokenization-platform-contracts/actions/workflows/test.yml/badge.svg)](https://github.com/yodaplus/tokenization-platform-contracts/actions/workflows/test.yml)
+
+# About This Repo
+This Repo is a fork of Tokenization Platform Contracts with removed Features for a simplified version of the Tokenization Platform.
+
+Link to the original Repo: https://github.com/yodaplus/tokenization-platform-contracts
+
 # Installation
 
 ```
