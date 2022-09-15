@@ -59,16 +59,12 @@ contract CustodianContract is
     uint256 value;
     string currency;
     address issuerPrimaryAddress;
-    address custodianPrimaryAddress;
-    address kycProviderPrimaryAddress;
-    address insurerPrimaryAddress;
     bool earlyRedemption;
     uint256 minSubscription;
     TokenStatus status;
     TokenType tokenType;
     address address_;
     bool onChainKyc;
-    address liquidityPool;
   }
 
   struct KycBasicDetails {
@@ -96,7 +92,6 @@ contract CustodianContract is
     KycAMLCTF kycAmlCtf;
   }
 
-  mapping(address => mapping(address => KycData)) public kycVerifications;
   struct InvestorClassificationRules {
     bool isExempted;
     bool isAccredited;
@@ -107,32 +102,18 @@ contract CustodianContract is
     InvestorClassificationRules allowedInvestorClassifications;
     bool useIssuerWhitelist;
   }
+
+  mapping(address => mapping(address => KycData)) public kycVerifications;
   mapping(address => RoleData) public _issuers;
-  mapping(address => uint256) public issuerCreditLimit;
-  mapping(address => uint256) public issuerDefault;
-  mapping(address => RoleData) public _custodians;
-  mapping(address => RoleData) public _kycProviders;
-  mapping(address => RoleData) public _insurers;
   mapping(address => LiquidityPool) public _liquidityPool;
 
   mapping(address => address) public _addressToIssuerPrimaryAddress;
-  mapping(address => address) public _addressToCustodianPrimaryAddress;
-  mapping(address => address) public _addressToKycProviderPrimaryAddress;
-  mapping(address => address) public _addressToInsurerPrimaryAddress;
 
   mapping(address => bool) internal _isIssuer;
-  mapping(address => bool) internal _isCustodian;
-  mapping(address => bool) internal _isKycProvider;
-  mapping(address => bool) internal _isInsurer;
 
   mapping(address => TokenData) internal _tokens;
   mapping(address => TokenRestrictions) internal _tokenRestrictions;
   mapping(address => address[]) internal _tokenAddressesByIssuerPrimaryAddress;
-  mapping(address => address[])
-    internal _tokenAddressesByCustodianPrimaryAddress;
-  mapping(address => address[])
-    internal _tokenAddressesByKycProviderPrimaryAddress;
-  mapping(address => address[]) internal _tokenAddressesByInsurerPrimaryAddress;
 
   mapping(string => bool) internal _tokenWithNameExists;
   mapping(string => bool) internal _tokenWithSymbolExists;
@@ -156,28 +137,12 @@ contract CustodianContract is
   event AddIssuerAddress(address primaryAddress, address[] addresses);
   event RemoveIssuerAddress(address primaryAddress, address[] addresses);
 
-  event AddCustodian(address primaryAddress);
-  event RemoveCustodian(address primaryAddress);
-  event AddCustodianAddress(address primaryAddress, address[] addresses);
-  event RemoveCustodianAddress(address primaryAddress, address[] addresses);
-
-  event AddKYCProvider(address primaryAddress);
-  event RemoveKYCProvider(address primaryAddress);
-  event AddKYCProviderAddress(address primaryAddress, address[] addresses);
-  event RemoveKYCProviderAddress(address primaryAddress, address[] addresses);
-
-  event AddInsurer(address primaryAddress);
-  event RemoveInsurer(address primaryAddress);
-  event AddInsurerAddress(address primaryAddress, address[] addresses);
-  event RemoveInsurerAddress(address primaryAddress, address[] addresses);
   event PaymentTokenAdded(address tokenAddress);
 
   event KycUpdated(address tokenAddress, address investorAddress);
 
   event AddLiquidityPool(address primaryAddress, address settlementAddress);
   event RemoveLiquidityPool(address primaryAddress);
-  event IssuerCreditLimitUpdated(address issuerAddress, uint256 creditLimit);
-  error ERC1066Error(bytes1 errorCode, string message);
 
   // Document Events
   event DocumentRemoved(
@@ -190,6 +155,9 @@ contract CustodianContract is
     string _uri,
     bytes32 _documentHash
   );
+
+  // Errors
+  error ERC1066Error(bytes1 errorCode, string message);
 
   enum ErrorCondition {
     WRONG_CALLER,
@@ -239,40 +207,10 @@ contract CustodianContract is
         ReasonCodes.APP_SPECIFIC_FAILURE,
         "removed issuer must not have tokens"
       );
-    } else if (condition == ErrorCondition.REMOVED_CUSTODIAN_HAS_TOKENS) {
-      revert ERC1066Error(
-        ReasonCodes.APP_SPECIFIC_FAILURE,
-        "removed custodian must not have tokens"
-      );
-    } else if (condition == ErrorCondition.REMOVED_KYCPROVIDER_HAS_TOKENS) {
-      revert ERC1066Error(
-        ReasonCodes.APP_SPECIFIC_FAILURE,
-        "removed KYC provider must not have tokens"
-      );
-    } else if (condition == ErrorCondition.REMOVED_INSURER_HAS_TOKENS) {
-      revert ERC1066Error(
-        ReasonCodes.APP_SPECIFIC_FAILURE,
-        "removed insurer must not have tokens"
-      );
     } else if (condition == ErrorCondition.TOKEN_WRONG_ISSUER) {
       revert ERC1066Error(
         ReasonCodes.APP_SPECIFIC_FAILURE,
         "issuer does not exists"
-      );
-    } else if (condition == ErrorCondition.TOKEN_WRONG_CUSTODIAN) {
-      revert ERC1066Error(
-        ReasonCodes.APP_SPECIFIC_FAILURE,
-        "custodian does not exists"
-      );
-    } else if (condition == ErrorCondition.TOKEN_WRONG_KYCPROVIDER) {
-      revert ERC1066Error(
-        ReasonCodes.APP_SPECIFIC_FAILURE,
-        "kyc provider does not exists"
-      );
-    } else if (condition == ErrorCondition.TOKEN_WRONG_INSURER) {
-      revert ERC1066Error(
-        ReasonCodes.APP_SPECIFIC_FAILURE,
-        "insurer does not exists"
       );
     } else if (condition == ErrorCondition.TOKEN_SAME_NAME_EXISTS) {
       revert ERC1066Error(
@@ -325,17 +263,13 @@ contract CustodianContract is
     address issuerAddress,
     address investorAddress,
     KycData calldata investorKycData
-  ) external onlyIssuerOrKycProvider {
+  ) external onlyIssuer {
     kycVerifications[issuerAddress][investorAddress] = investorKycData;
     emit KycUpdated(issuerAddress, investorAddress);
   }
 
   function isIssuer(address addr) public view returns (bool) {
     return _isIssuer[_addressToIssuerPrimaryAddress[addr]];
-  }
-
-  function isInsurer(address addr) public view returns (bool) {
-    return _isInsurer[_addressToInsurerPrimaryAddress[addr]];
   }
 
   function isIssuerOwnerOrEmployee(address primaryIssuer, address issuer)
@@ -345,14 +279,6 @@ contract CustodianContract is
     returns (bool)
   {
     return _addressToIssuerPrimaryAddress[issuer] == primaryIssuer;
-  }
-
-  function isCustodian(address addr) public view returns (bool) {
-    return _isCustodian[_addressToCustodianPrimaryAddress[addr]];
-  }
-
-  function isKycProvider(address addr) public view returns (bool) {
-    return _isKycProvider[_addressToKycProviderPrimaryAddress[addr]];
   }
 
   function isWhitelisted(address tokenAddress, address investorAddress)
@@ -373,27 +299,6 @@ contract CustodianContract is
 
   modifier onlyIssuer() {
     if (isIssuer(msg.sender) == false) {
-      throwError(ErrorCondition.WRONG_CALLER);
-    }
-    _;
-  }
-
-  modifier onlyCustodian() {
-    if (isCustodian(msg.sender) == false) {
-      throwError(ErrorCondition.WRONG_CALLER);
-    }
-    _;
-  }
-
-  modifier onlyKycProvider() {
-    if (isKycProvider(msg.sender) == false) {
-      throwError(ErrorCondition.WRONG_CALLER);
-    }
-    _;
-  }
-
-  modifier onlyIssuerOrKycProvider() {
-    if (isIssuer(msg.sender) == false && isKycProvider(msg.sender) == false) {
       throwError(ErrorCondition.WRONG_CALLER);
     }
     _;
@@ -506,53 +411,7 @@ contract CustodianContract is
       countryCode,
       primaryAddress
     );
-    // setting Issuer Credit Limit
-    issuerCreditLimit[primaryAddress] = 0;
-    issuerDefault[primaryAddress] = 0;
-    emit IssuerCreditLimitUpdated(primaryAddress, 0);
     emit AddIssuer(primaryAddress);
-  }
-
-  function addCustodian(string calldata countryCode, address primaryAddress)
-    external
-    onlyOwner
-  {
-    _addRole(
-      _isCustodian,
-      _custodians,
-      _addressToCustodianPrimaryAddress,
-      countryCode,
-      primaryAddress
-    );
-    emit AddCustodian(primaryAddress);
-  }
-
-  function addKycProvider(string calldata countryCode, address primaryAddress)
-    external
-    onlyOwner
-  {
-    _addRole(
-      _isKycProvider,
-      _kycProviders,
-      _addressToKycProviderPrimaryAddress,
-      countryCode,
-      primaryAddress
-    );
-    emit AddKYCProvider(primaryAddress);
-  }
-
-  function addInsurer(string calldata countryCode, address primaryAddress)
-    external
-    onlyOwner
-  {
-    _addRole(
-      _isInsurer,
-      _insurers,
-      _addressToInsurerPrimaryAddress,
-      countryCode,
-      primaryAddress
-    );
-    emit AddInsurer(primaryAddress);
   }
 
   function removeIssuer(address primaryAddress) external onlyOwner {
@@ -566,45 +425,6 @@ contract CustodianContract is
       primaryAddress
     );
     emit RemoveIssuer(primaryAddress);
-  }
-
-  function removeCustodian(address primaryAddress) external onlyOwner {
-    if (_tokenAddressesByCustodianPrimaryAddress[primaryAddress].length > 0) {
-      throwError(ErrorCondition.REMOVED_CUSTODIAN_HAS_TOKENS);
-    }
-    _removeRole(
-      _isCustodian,
-      _custodians,
-      _addressToCustodianPrimaryAddress,
-      primaryAddress
-    );
-    emit RemoveCustodian(primaryAddress);
-  }
-
-  function removeKycProvider(address primaryAddress) external onlyOwner {
-    if (_tokenAddressesByKycProviderPrimaryAddress[primaryAddress].length > 0) {
-      throwError(ErrorCondition.REMOVED_KYCPROVIDER_HAS_TOKENS);
-    }
-    _removeRole(
-      _isKycProvider,
-      _kycProviders,
-      _addressToKycProviderPrimaryAddress,
-      primaryAddress
-    );
-    emit RemoveKYCProvider(primaryAddress);
-  }
-
-  function removeInsurer(address primaryAddress) external onlyOwner {
-    if (_tokenAddressesByInsurerPrimaryAddress[primaryAddress].length > 0) {
-      throwError(ErrorCondition.REMOVED_INSURER_HAS_TOKENS);
-    }
-    _removeRole(
-      _isInsurer,
-      _insurers,
-      _addressToInsurerPrimaryAddress,
-      primaryAddress
-    );
-    emit RemoveInsurer(primaryAddress);
   }
 
   function addIssuerAccounts(
@@ -621,48 +441,6 @@ contract CustodianContract is
     emit AddIssuerAddress(primaryAddress, addresses);
   }
 
-  function addCustodianAccounts(
-    address primaryAddress,
-    address[] calldata addresses
-  ) external {
-    _addRoleAddresses(
-      _isCustodian,
-      _custodians,
-      _addressToCustodianPrimaryAddress,
-      primaryAddress,
-      addresses
-    );
-    emit AddCustodianAddress(primaryAddress, addresses);
-  }
-
-  function addKycProviderAccounts(
-    address primaryAddress,
-    address[] calldata addresses
-  ) external {
-    _addRoleAddresses(
-      _isKycProvider,
-      _kycProviders,
-      _addressToKycProviderPrimaryAddress,
-      primaryAddress,
-      addresses
-    );
-    emit AddKYCProviderAddress(primaryAddress, addresses);
-  }
-
-  function addInsurerAccounts(
-    address primaryAddress,
-    address[] calldata addresses
-  ) external {
-    _addRoleAddresses(
-      _isInsurer,
-      _insurers,
-      _addressToInsurerPrimaryAddress,
-      primaryAddress,
-      addresses
-    );
-    emit AddInsurerAddress(primaryAddress, addresses);
-  }
-
   function removeIssuerAccounts(
     address primaryAddress,
     address[] calldata addresses
@@ -675,48 +453,6 @@ contract CustodianContract is
       addresses
     );
     emit RemoveIssuerAddress(primaryAddress, addresses);
-  }
-
-  function removeCustodianAccounts(
-    address primaryAddress,
-    address[] calldata addresses
-  ) external {
-    _removeRoleAddresses(
-      _isCustodian,
-      _custodians,
-      _addressToCustodianPrimaryAddress,
-      primaryAddress,
-      addresses
-    );
-    emit RemoveCustodianAddress(primaryAddress, addresses);
-  }
-
-  function removeInsurerAccounts(
-    address primaryAddress,
-    address[] calldata addresses
-  ) external {
-    _removeRoleAddresses(
-      _isInsurer,
-      _insurers,
-      _addressToInsurerPrimaryAddress,
-      primaryAddress,
-      addresses
-    );
-    emit RemoveInsurerAddress(primaryAddress, addresses);
-  }
-
-  function removeKycProviderAccounts(
-    address primaryAddress,
-    address[] calldata addresses
-  ) external {
-    _removeRoleAddresses(
-      _isKycProvider,
-      _kycProviders,
-      _addressToKycProviderPrimaryAddress,
-      primaryAddress,
-      addresses
-    );
-    emit RemoveKYCProviderAddress(primaryAddress, addresses);
   }
 
   function addLiqudityPool(address primaryAddress, address settlementAddress)
@@ -739,18 +475,6 @@ contract CustodianContract is
     emit RemoveLiquidityPool(primaryAddress);
   }
 
-  function setIssuerCredit(address primaryAddress, uint256 credit)
-    external
-    onlyOwner
-  {
-    issuerCreditLimit[primaryAddress] = credit;
-    emit IssuerCreditLimitUpdated(primaryAddress, credit);
-  }
-
-  function setIssuerDefault(address issuerAddress) external onlyOwner {
-    issuerDefault[issuerAddress] = issuerDefault[issuerAddress] + 1;
-  }
-
   struct TokenInput {
     string name;
     string symbol;
@@ -758,9 +482,6 @@ contract CustodianContract is
     uint256 value;
     string currency;
     address issuerPrimaryAddress;
-    address custodianPrimaryAddress;
-    address kycProviderPrimaryAddress;
-    address insurerPrimaryAddress;
     bool earlyRedemption;
     uint256 minSubscription;
     address[] paymentTokens;
@@ -769,7 +490,6 @@ contract CustodianContract is
     uint256 maturityPeriod;
     uint256 settlementPeriod;
     uint256 collateral;
-    uint256 insurerCollateralShare;
     bytes32[] countries;
     InvestorClassificationRules investorClassifications;
     bool useIssuerWhitelist;
@@ -788,18 +508,6 @@ contract CustodianContract is
       throwError(ErrorCondition.TOKEN_WRONG_ISSUER);
     }
 
-    if (_isCustodian[token.custodianPrimaryAddress] == false) {
-      throwError(ErrorCondition.TOKEN_WRONG_CUSTODIAN);
-    }
-
-    if (_isKycProvider[token.kycProviderPrimaryAddress] == false) {
-      throwError(ErrorCondition.TOKEN_WRONG_KYCPROVIDER);
-    }
-    if (token.insurerCollateralShare > 0) {
-      if (_isInsurer[token.insurerPrimaryAddress] == false) {
-        throwError(ErrorCondition.TOKEN_WRONG_INSURER);
-      }
-    }
     if (_tokenWithNameExists[token.name] == true) {
       throwError(ErrorCondition.TOKEN_SAME_NAME_EXISTS);
     }
@@ -842,9 +550,7 @@ contract CustodianContract is
         maturityPeriod: token.maturityPeriod,
         settlementPeriod: token.settlementPeriod,
         collateral: token.collateral,
-        issuerCollateralShare: token.collateral - token.insurerCollateralShare,
-        insurerCollateralShare: token.insurerCollateralShare,
-        collateralProvider: token.insurerPrimaryAddress,
+        issuerCollateralShare: token.collateral,
         documentName: token.documentName,
         documentUri: token.documentUri,
         documentHash: token.documentHash,
@@ -860,28 +566,15 @@ contract CustodianContract is
     _tokens[tokenAddress].value = token.value;
     _tokens[tokenAddress].currency = token.currency;
     _tokens[tokenAddress].issuerPrimaryAddress = token.issuerPrimaryAddress;
-    _tokens[tokenAddress].custodianPrimaryAddress = token
-      .custodianPrimaryAddress;
-    _tokens[tokenAddress].kycProviderPrimaryAddress = token
-      .kycProviderPrimaryAddress;
-    _tokens[tokenAddress].insurerPrimaryAddress = token.insurerPrimaryAddress;
     _tokens[tokenAddress].earlyRedemption = token.earlyRedemption;
     _tokens[tokenAddress].minSubscription = token.minSubscription;
     _tokens[tokenAddress].status = TokenStatus.Published;
     _tokens[tokenAddress].address_ = tokenAddress;
     _tokens[tokenAddress].onChainKyc = token.onChainKyc;
     _tokens[tokenAddress].tokenType = token.tokenType;
-    _tokens[tokenAddress].liquidityPool = token.liquidityPool;
     _tokenWithNameExists[token.name] = true;
     _tokenWithSymbolExists[token.symbol] = true;
     _tokenAddressesByIssuerPrimaryAddress[token.issuerPrimaryAddress].push(
-      tokenAddress
-    );
-    _tokenAddressesByCustodianPrimaryAddress[token.custodianPrimaryAddress]
-      .push(tokenAddress);
-    _tokenAddressesByKycProviderPrimaryAddress[token.kycProviderPrimaryAddress]
-      .push(tokenAddress);
-    _tokenAddressesByInsurerPrimaryAddress[token.insurerPrimaryAddress].push(
       tokenAddress
     );
     _tokenRestrictions[tokenAddress].allowedCountries = token.countries;
@@ -929,7 +622,7 @@ contract CustodianContract is
 
   function addWhitelist(address tokenAddress, address[] calldata addresses)
     external
-    onlyIssuerOrKycProvider
+    onlyIssuer
   {
     assertTokenExists(tokenAddress);
     assertTokenNotPaused(tokenAddress);
@@ -942,7 +635,7 @@ contract CustodianContract is
 
   function removeWhitelist(address tokenAddress, address[] calldata addresses)
     external
-    onlyIssuerOrKycProvider
+    onlyIssuer
   {
     assertTokenExists(tokenAddress);
     assertTokenNotPaused(tokenAddress);
